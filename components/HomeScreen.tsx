@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, Image, Platform, Alert } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import RideAlertModal from './RideAlertModal';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from 'react-native-reanimated';
+import { rideService, type Ride } from '../api/rideService';
 
 const userAvatar = require('../assets/icon.png');
 const carIcon = require('../assets/icon.png');
@@ -25,13 +26,68 @@ const STATUS_COLORS = {
   GoHome: '#6366f1', // indigo-500
 };
 
+const MAX_VISIBLE_MODALS = 3; // Maximum number of ride alerts to show
+
 export default function HomeScreen({ navigation }: Props) {
   const [status, setStatus] = useState<'Offline' | 'Online' | 'GoHome'>('Offline');
-  const [showAlert, setShowAlert] = useState(false);
+  const [activeRides, setActiveRides] = useState<Ride[]>([]);
+  const [showRideAlerts, setShowRideAlerts] = useState(false);
+  const [isStatusChanging, setIsStatusChanging] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Animation logic
   const statusIndex = { Offline: 0, Online: 1, GoHome: 2 };
   const colorProgress = useSharedValue(statusIndex[status]);
+
+  // Generate a new ride request
+  const generateRideRequest = useCallback(async () => {
+    try {
+      // Get a random ID from 1-3 since we have 3 rides in our JSON
+      const randomId = Math.floor(Math.random() * 3) + 1;
+      const ride = await rideService.getRideRequest(randomId.toString());
+      return ride;
+    } catch (error) {
+      console.error('Failed to fetch ride:', error);
+      return null;
+    }
+  }, []);
+
+  // Simulate incoming ride requests when online
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    const generateRides = async () => {
+      if (status === 'Online') {
+        // Generate first ride only if no active rides
+        if (activeRides.length === 0) {
+          const initialRide = await generateRideRequest();
+          if (initialRide) {
+            setActiveRides([initialRide]);
+            setShowRideAlerts(true);
+          }
+        }
+
+        // Set up interval for new rides
+        intervalId = setInterval(async () => {
+          if (activeRides.length < MAX_VISIBLE_MODALS) {
+            const newRide = await generateRideRequest();
+            if (newRide) {
+              setActiveRides(prev => [...prev, newRide]);
+              setShowRideAlerts(true);
+            }
+          }
+        }, 10000);
+      }
+    };
+
+    generateRides();
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [status, generateRideRequest, activeRides.length]);
 
   React.useEffect(() => {
     colorProgress.value = withTiming(statusIndex[status], { duration: 350 });
@@ -48,12 +104,53 @@ export default function HomeScreen({ navigation }: Props) {
         [STATUS_COLORS.Offline, STATUS_COLORS.Online, STATUS_COLORS.GoHome]
       );
       return {
-        backgroundColor: isActive ? bgColor : 'rgba(0,0,0,0.08)',
-        shadowOpacity: isActive ? 0.25 : 0,
-        transform: [{ scale: isActive ? 1.05 : 1 }],
+        backgroundColor: isActive ? bgColor : 'white',
+        transform: [{ scale: isActive ? 1.02 : 1 }],
+        shadowOpacity: isActive ? 0.3 : 0.1,
+        shadowRadius: isActive ? 10 : 5,
       };
     });
   };
+
+  const handleRideClose = useCallback((rideId: string) => {
+    setActiveRides(prev => {
+      const newRides = prev.filter(ride => ride.id !== rideId);
+      if (newRides.length === 0) {
+        setShowRideAlerts(false);
+      }
+      return newRides;
+    });
+  }, []);
+
+  const handleStatusChange = useCallback(async (newStatus: 'Offline' | 'Online' | 'GoHome') => {
+    if (isStatusChanging) return;
+    
+    setIsStatusChanging(true);
+    setIsLoading(true);
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setStatus(newStatus);
+      if (newStatus === 'Offline') {
+        setActiveRides([]);
+        setShowRideAlerts(false);
+      }
+    } finally {
+      setIsStatusChanging(false);
+      setIsLoading(false);
+    }
+  }, [isStatusChanging]);
+
+  const handleServicesPress = useCallback(async () => {
+    if (status === 'Online') {
+      const newRide = await generateRideRequest();
+      if (newRide) {
+        setActiveRides(prev => [...prev, newRide]);
+        setShowRideAlerts(true);
+      }
+    }
+  }, [status, generateRideRequest]);
 
   return (
     <View className="flex-1 bg-gray-100">
@@ -65,55 +162,56 @@ export default function HomeScreen({ navigation }: Props) {
         <Text className="text-lg font-semibold">Welcome, Rakesh!</Text>
         <Image source={userAvatar} className="w-9 h-9 rounded-full" />
       </View>
+
       {/* Status Toggle */}
-      <View className="mt-4 mx-4">
-        <View className="flex-row justify-between bg-gray-200 rounded-2xl p-1.5 shadow-sm">
-          <Animated.View style={[{ flex: 1, marginRight: 4, borderRadius: 12 }, getAnimatedStyle('Offline')]}> 
-            <TouchableOpacity
-              className="flex-1 items-center py-3 px-4 rounded-xl"
-              onPress={() => setStatus('Offline')}
-              activeOpacity={0.8}
-            >
-              <View className="flex-row items-center space-x-2">
-                <Ionicons name="power" size={18} color={status === 'Offline' ? 'white' : '#666'} />
-                <Text className={`font-bold ${status === 'Offline' ? 'text-white' : 'text-gray-600'}`}>Offline</Text>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-          <Animated.View style={[{ flex: 1, marginHorizontal: 2, borderRadius: 12 }, getAnimatedStyle('Online')]}> 
-            <TouchableOpacity
-              className="flex-1 items-center py-3 px-4 rounded-xl"
-              onPress={() => setStatus('Online')}
-              activeOpacity={0.8}
-            >
-              <View className="flex-row items-center space-x-2">
-                <Ionicons name="radio" size={18} color={status === 'Online' ? 'white' : '#666'} />
-                <Text className={`font-bold ${status === 'Online' ? 'text-white' : 'text-gray-600'}`}>Online</Text>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-          <Animated.View style={[{ flex: 1, marginLeft: 4, borderRadius: 12 }, getAnimatedStyle('GoHome')]}> 
-            <TouchableOpacity
-              className="flex-1 items-center py-3 px-4 rounded-xl"
-              onPress={() => setStatus('GoHome')}
-              activeOpacity={0.8}
-            >
-              <View className="flex-row items-center space-x-2">
-                <Ionicons name="home" size={18} color={status === 'GoHome' ? 'white' : '#666'} />
-                <Text className={`font-bold ${status === 'GoHome' ? 'text-white' : 'text-gray-600'}`}>Home</Text>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
+      <View className="mx-4 mt-4">
+        <View className="bg-gray-100 p-2 rounded-2xl">
+          <View className="flex-row bg-white rounded-xl p-1 shadow-sm">
+            {['Offline', 'Online', 'GoHome'].map((statusType) => (
+              <TouchableOpacity
+                key={statusType}
+                onPress={() => handleStatusChange(statusType as 'Offline' | 'Online' | 'GoHome')}
+                disabled={isStatusChanging}
+                className={`flex-1 ${status === statusType ? '' : 'opacity-50'}`}
+              >
+                <Animated.View
+                  style={[getAnimatedStyle(statusType as 'Offline' | 'Online' | 'GoHome')]}
+                  className="py-3 px-2 rounded-lg"
+                >
+                  <View className="flex-row items-center justify-center space-x-2">
+                    <View className={`p-2 rounded-full ${
+                      status === statusType ? 'bg-white/20' : 'bg-gray-200'
+                    }`}>
+                      <Ionicons
+                        name={
+                          statusType === 'Offline' ? 'power' :
+                          statusType === 'Online' ? 'radio' : 'home'
+                        }
+                        size={18}
+                        color={status === statusType ? 'white' : '#666'}
+                      />
+                    </View>
+                    <Text className={`font-semibold ${
+                      status === statusType ? 'text-white' : 'text-gray-600'
+                    }`}>
+                      {statusType}
+                    </Text>
+                  </View>
+                </Animated.View>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
+
       {/* Stats Card */}
       <View className="flex-row justify-around py-2 border-t border-b border-gray-200 bg-white mt-2">
         <View className="items-center">
-          <Text className="text-lg font-bold">2</Text>
-          <Text className="text-xs text-gray-500">Rides</Text>
+          <Text className="text-lg font-bold">{activeRides.length}</Text>
+          <Text className="text-xs text-gray-500">Active Rides</Text>
         </View>
         <View className="items-center">
-          <Text className="text-lg font-bold">₹33</Text>
+          <Text className="text-lg font-bold">₹{activeRides.reduce((sum, ride) => sum + ride.baseFare, 0)}</Text>
           <Text className="text-xs text-gray-500">Earnings</Text>
         </View>
         <View className="items-center">
@@ -121,11 +219,11 @@ export default function HomeScreen({ navigation }: Props) {
           <Text className="text-xs text-gray-500">Bonus</Text>
         </View>
       </View>
-      {/* Map View */}
-      <View className="flex-1 mt-2 rounded-2xl overflow-hidden mx-2">
+
+      {/* Map View with absolute positioning */}
+      <View className="flex-1 mt-2">
         <MapView
           style={{ width: '100%', height: '100%' }}
-          className="flex-1"
           initialRegion={initialRegion}
         >
           <Marker coordinate={{ latitude: 28.4711, longitude: 77.0736 }}>
@@ -139,12 +237,22 @@ export default function HomeScreen({ navigation }: Props) {
             </View>
           </Marker>
         </MapView>
-        <TouchableOpacity className="absolute bottom-4 right-4 bg-white px-4 py-2 rounded-full shadow" onPress={() => setShowAlert(true)}>
-          <Text className="text-indigo-900 font-bold">Services</Text>
-        </TouchableOpacity>
       </View>
-      {/* Ride Alert Modal */}
-      <RideAlertModal visible={showAlert} onClose={() => setShowAlert(false)} />
+
+      {/* Ride Alerts Container */}
+      {showRideAlerts && (
+        <View className="absolute inset-0 bg-black/20 pointer-events-box">
+          {activeRides.slice(0, MAX_VISIBLE_MODALS).map((ride, index) => (
+            <RideAlertModal
+              key={ride.id}
+              visible={true}
+              onClose={() => handleRideClose(ride.id)}
+              ride={ride}
+              index={index}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }

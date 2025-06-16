@@ -1,0 +1,43 @@
+{
+  "rides": [
+    {
+      "id": "1",
+      "distance": "6.8",
+      "pickupDistance": "1.2",
+      "baseFare": 78,
+      "pickupLocation": "Medinova Apartments",
+      "dropLocation": "Galleria Market",
+      "passenger": {
+        "name": "John Doe",
+        "avatar": "../assets/icon.png"
+      },
+      "expiresIn": 30
+    },
+    {
+      "id": "2",
+      "distance": "4.2",
+      "pickupDistance": "0.8",
+      "baseFare": 65,
+      "pickupLocation": "Cyber Hub, DLF Cyber City, Phase 2...",
+      "dropLocation": "Golf Course Road, Sector 53...",
+      "passenger": {
+        "name": "Jane Smith",
+        "avatar": "../assets/icon.png"
+      },
+      "expiresIn": 5
+    },
+    {
+      "id": "3",
+      "distance": "8.5",
+      "pickupDistance": "2.1",
+      "baseFare": 95,
+      "pickupLocation": "HUDA City Centre Metro...",
+      "dropLocation": "Ambience Mall, DLF Phase 3...",
+      "passenger": {
+        "name": "Mike Johnson",
+        "avatar": "../assets/icon.png"
+      },
+      "expiresIn": 5
+    }
+  ]
+}
