@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Image, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Image, Alert } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import RideAlertModal from './RideAlertModal';
@@ -31,6 +31,8 @@ const MAX_VISIBLE_MODALS = 3; // Maximum number of ride alerts to show
 export default function HomeScreen({ navigation }: Props) {
   const [status, setStatus] = useState<'Offline' | 'Online' | 'GoHome'>('Offline');
   const [activeRides, setActiveRides] = useState<Ride[]>([]);
+  const [acceptedRides, setAcceptedRides] = useState<Ride[]>([]); // <-- new
+  const [earnings, setEarnings] = useState(0); // <-- new
   const [showRideAlerts, setShowRideAlerts] = useState(false);
   const [isStatusChanging, setIsStatusChanging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -45,7 +47,8 @@ export default function HomeScreen({ navigation }: Props) {
       // Get a random ID from 1-3 since we have 3 rides in our JSON
       const randomId = Math.floor(Math.random() * 3) + 1;
       const ride = await rideService.getRideRequest(randomId.toString());
-      return ride;
+      // Add requestStatus
+      return { ...ride, requestStatus: 'pending' } as Ride;
     } catch (error) {
       console.error('Failed to fetch ride:', error);
       return null;
@@ -72,7 +75,12 @@ export default function HomeScreen({ navigation }: Props) {
           if (activeRides.length < MAX_VISIBLE_MODALS) {
             const newRide = await generateRideRequest();
             if (newRide) {
-              setActiveRides(prev => [...prev, newRide]);
+              setActiveRides(prev => {
+                // Check if ride with same ID already exists
+                const exists = prev.some(ride => ride.id === newRide.id);
+                if (exists) return prev;
+                return [...prev, newRide];
+              });
               setShowRideAlerts(true);
             }
           }
@@ -113,14 +121,27 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const handleRideClose = useCallback((rideId: string) => {
-    setActiveRides(prev => {
-      const newRides = prev.filter(ride => ride.id !== rideId);
-      if (newRides.length === 0) {
-        setShowRideAlerts(false);
-      }
-      return newRides;
-    });
+    setActiveRides(prev => prev.filter(ride => ride.id !== rideId));
   }, []);
+
+  const handleRideAccept = useCallback(async (rideId: string) => {
+    try {
+      const ride = activeRides.find(r => r.id === rideId);
+      if (!ride) return;
+      const success = await rideService.acceptRide(rideId, ride.baseFare);
+      if (success) {
+        // Mark as accepted
+        setActiveRides(prev => prev.filter(r => r.id !== rideId));
+        setAcceptedRides(prev => [...prev, { ...ride, requestStatus: 'accepted' }]);
+        setEarnings(prev => prev + ride.baseFare);
+        Alert.alert('Success', 'Ride accepted successfully!');
+      } else {
+        Alert.alert('Error', 'Failed to accept ride. Please try again.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred while accepting the ride.');
+    }
+  }, [activeRides]);
 
   const handleStatusChange = useCallback(async (newStatus: 'Offline' | 'Online' | 'GoHome') => {
     if (isStatusChanging) return;
@@ -141,16 +162,6 @@ export default function HomeScreen({ navigation }: Props) {
       setIsLoading(false);
     }
   }, [isStatusChanging]);
-
-  const handleServicesPress = useCallback(async () => {
-    if (status === 'Online') {
-      const newRide = await generateRideRequest();
-      if (newRide) {
-        setActiveRides(prev => [...prev, newRide]);
-        setShowRideAlerts(true);
-      }
-    }
-  }, [status, generateRideRequest]);
 
   return (
     <View className="flex-1 bg-gray-100">
@@ -211,7 +222,7 @@ export default function HomeScreen({ navigation }: Props) {
           <Text className="text-xs text-gray-500">Active Rides</Text>
         </View>
         <View className="items-center">
-          <Text className="text-lg font-bold">₹{activeRides.reduce((sum, ride) => sum + ride.baseFare, 0)}</Text>
+          <Text className="text-lg font-bold">₹{earnings}</Text>
           <Text className="text-xs text-gray-500">Earnings</Text>
         </View>
         <View className="items-center">
@@ -220,7 +231,7 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
       </View>
 
-      {/* Map View with absolute positioning */}
+      {/* Map */}
       <View className="flex-1 mt-2">
         <MapView
           style={{ width: '100%', height: '100%' }}
@@ -242,15 +253,19 @@ export default function HomeScreen({ navigation }: Props) {
       {/* Ride Alerts Container */}
       {showRideAlerts && (
         <View className="absolute inset-0 bg-black/20 pointer-events-box">
-          {activeRides.slice(0, MAX_VISIBLE_MODALS).map((ride, index) => (
-            <RideAlertModal
-              key={ride.id}
-              visible={true}
-              onClose={() => handleRideClose(ride.id)}
-              ride={ride}
-              index={index}
-            />
-          ))}
+          {activeRides
+            .filter(ride => ride.requestStatus === 'pending')
+            .slice(0, MAX_VISIBLE_MODALS)
+            .map((ride, index) => (
+              <RideAlertModal
+                key={`${ride.id}-${index}`}
+                visible={true}
+                onClose={() => handleRideClose(ride.id)}
+                onAccept={() => handleRideAccept(ride.id)}
+                ride={ride}
+                index={index}
+              />
+            ))}
         </View>
       )}
     </View>

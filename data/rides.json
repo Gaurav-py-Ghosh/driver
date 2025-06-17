@@ -11,7 +11,8 @@
         "name": "John Doe",
         "avatar": "../assets/icon.png"
       },
-      "expiresIn": 30
+      "expiresIn": 30,
+       "requestStatus": "pending"
     },
     {
       "id": "2",
@@ -24,7 +25,8 @@
         "name": "Jane Smith",
         "avatar": "../assets/icon.png"
       },
-      "expiresIn": 5
+      "expiresIn": 5,
+       "requestStatus": "pending"
     },
     {
       "id": "3",
@@ -37,7 +39,8 @@
         "name": "Mike Johnson",
         "avatar": "../assets/icon.png"
       },
-      "expiresIn": 5
+      "expiresIn": 5,
+       "requestStatus": "pending"
     }
   ]
 }

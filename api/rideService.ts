@@ -12,6 +12,7 @@ export interface Ride {
     avatar: string;
   };
   expiresIn: number;
+  requestStatus?: 'pending' | 'accepted' | 'rejected'; // <-- add this line
 }
 
 export const rideService = {
@@ -24,7 +25,12 @@ export const rideService = {
       if (!ride) {
         throw new Error('No ride available at the moment');
       }
-      return ride;
+      // Ensure requestStatus is of the correct type
+      const allowedStatuses = ['pending', 'accepted', 'rejected'] as const;
+      const requestStatus = allowedStatuses.includes(ride.requestStatus as typeof allowedStatuses[number])
+        ? (ride.requestStatus as typeof allowedStatuses[number])
+        : undefined;
+      return { ...ride, requestStatus } as Ride;
     } catch (error) {
       console.warn('Ride fetch warning:', error);
       // Return a default ride instead of throwing

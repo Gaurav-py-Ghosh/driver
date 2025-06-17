@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, Modal, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
   useAnimatedStyle, 
   withSpring,
   withTiming,
-  runOnJS,
 } from 'react-native-reanimated';
 import { rideService, type Ride } from '../api/rideService';
 
 interface RideAlertModalProps {
   visible: boolean;
   onClose: () => void;
+  onAccept: () => void;
   ride: Ride;
   index: number;
 }
@@ -20,8 +20,9 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const MAX_VISIBLE_MODALS = 3;
 const MODAL_OFFSET = 60;
 
-export default function RideAlertModal({ visible, onClose, ride, index }: RideAlertModalProps) {
+export default function RideAlertModal({ visible, onClose, onAccept, ride, index }: RideAlertModalProps) {
   const [timeLeft, setTimeLeft] = useState(ride.expiresIn);
+  
   const translateY = useAnimatedStyle(() => ({
     transform: [{ 
       translateY: withSpring(
@@ -36,19 +37,32 @@ export default function RideAlertModal({ visible, onClose, ride, index }: RideAl
   useEffect(() => {
     if (!visible) return;
     
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          onClose();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    let timer: NodeJS.Timeout;
+    const startTimer = () => {
+      timer = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            onClose();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    };
 
-    return () => clearInterval(timer);
+    startTimer();
+    return () => {
+      if (timer) {
+        clearInterval(timer);
+      }
+    };
   }, [visible, onClose]);
+
+  const handleAccept = useCallback(() => {
+    onAccept();
+    onClose();
+  }, [onAccept, onClose]);
 
   if (!visible || index >= MAX_VISIBLE_MODALS) return null;
 
@@ -109,7 +123,7 @@ export default function RideAlertModal({ visible, onClose, ride, index }: RideAl
             <Text className="text-center font-semibold text-gray-600">Reject</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            onPress={onClose}
+            onPress={handleAccept}
             className="flex-1 bg-blue-500 py-3 rounded-xl"
           >
             <Text className="text-center font-semibold text-white">Accept</Text>
