@@ -7,6 +7,7 @@ import { RootStackParamList } from '../App';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from 'react-native-reanimated';
 import { rideService, type Ride } from '../api/rideService';
 import RideCardStack from './RideCardStack';
+import { useRouter } from "expo-router";
 
 const userAvatar = require('../assets/icon.png');
 const carIcon = require('../assets/icon.png');
@@ -30,6 +31,7 @@ const MAX_VISIBLE_MODALS = 3; // Maximum number of ride alerts to show
 const CARD_TIMER_DURATION = 20; // All cards get 20s timer
 
 export default function HomeScreen({ navigation }: Props) {
+  const router = useRouter();
   const [status, setStatus] = useState<'Offline' | 'Online' | 'GoHome'>('Offline');
   const [activeRides, setActiveRides] = useState<Ride[]>([]);
   const [acceptedRides, setAcceptedRides] = useState<Ride[]>([]); // <-- new
@@ -117,7 +119,8 @@ export default function HomeScreen({ navigation }: Props) {
         setActiveRides(prev => prev.filter(r => r.id !== rideId));
         setAcceptedRides(prev => [...prev, { ...ride, requestStatus: 'accepted' }]);
         setEarnings(prev => prev + ride.baseFare);
-        Alert.alert('Success', 'Ride accepted successfully!');
+        // Alert.alert('Success', 'Ride accepted successfully!');
+        router.push("/ride-accepted")
       } else {
         Alert.alert('Error', 'Failed to accept ride. Please try again.');
       }
