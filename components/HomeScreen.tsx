@@ -2,11 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Image, Alert } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
-import RideAlertModal from './RideAlertModal';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from 'react-native-reanimated';
 import { rideService, type Ride } from '../api/rideService';
+import RideCardStack from './RideCardStack';
 
 const userAvatar = require('../assets/icon.png');
 const carIcon = require('../assets/icon.png');
@@ -27,6 +27,7 @@ const STATUS_COLORS = {
 };
 
 const MAX_VISIBLE_MODALS = 3; // Maximum number of ride alerts to show
+const CARD_TIMER_DURATION = 20; // All cards get 20s timer
 
 export default function HomeScreen({ navigation }: Props) {
   const [status, setStatus] = useState<'Offline' | 'Online' | 'GoHome'>('Offline');
@@ -55,47 +56,29 @@ export default function HomeScreen({ navigation }: Props) {
     }
   }, []);
 
-  // Simulate incoming ride requests when online
+  // Simulate incoming ride requests when online, with staggered timing
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    const generateRides = async () => {
-      if (status === 'Online') {
-        // Generate first ride only if no active rides
-        if (activeRides.length === 0) {
-          const initialRide = await generateRideRequest();
-          if (initialRide) {
-            setActiveRides([initialRide]);
-            setShowRideAlerts(true);
-          }
-        }
-
-        // Set up interval for new rides
-        intervalId = setInterval(async () => {
-          if (activeRides.length < MAX_VISIBLE_MODALS) {
-            const newRide = await generateRideRequest();
+    let timeouts: NodeJS.Timeout[] = [];
+    const rideIds = ['1', '2', '3'];
+    if (status === 'Online') {
+      setActiveRides([]);
+      rideIds.forEach((id, idx) => {
+        timeouts.push(setTimeout(() => {
+          rideService.getRideRequest(id).then(newRide => {
             if (newRide) {
               setActiveRides(prev => {
-                // Check if ride with same ID already exists
-                const exists = prev.some(ride => ride.id === newRide.id);
-                if (exists) return prev;
-                return [...prev, newRide];
+                if (prev.length >= MAX_VISIBLE_MODALS || prev.some(ride => ride.id === newRide.id)) return prev;
+                return [...prev, { ...newRide, expiresIn: CARD_TIMER_DURATION }];
               });
-              setShowRideAlerts(true);
             }
-          }
-        }, 10000);
-      }
-    };
-
-    generateRides();
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [status, generateRideRequest, activeRides.length]);
+          });
+        }, idx * 3000));
+      });
+    } else {
+      setActiveRides([]);
+    }
+    return () => { timeouts.forEach(clearTimeout); };
+  }, [status]);
 
   React.useEffect(() => {
     colorProgress.value = withTiming(statusIndex[status], { duration: 350 });
@@ -231,6 +214,29 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
       </View>
 
+      {/* Ride Alerts Card Stack */}
+      {status === 'Online' && activeRides.length > 0 && (
+        <RideCardStack
+          rides={activeRides
+            .map(ride => ({ ...ride, requestStatus: ride.requestStatus ?? 'pending', expiresIn: CARD_TIMER_DURATION }))
+            .filter(ride => ride.requestStatus === 'pending')
+            .slice(0, MAX_VISIBLE_MODALS)
+          }
+          onAccept={handleRideAccept}
+          onBargain={(id, newFare) => {
+            // Accept with bargained fare
+            const ride = activeRides.find(r => r.id === id);
+            if (ride) {
+              setActiveRides(prev => prev.filter(r => r.id !== id));
+              setAcceptedRides(prev => [...prev, { ...ride, requestStatus: 'accepted', baseFare: newFare }]);
+              setEarnings(prev => prev + newFare);
+              Alert.alert('Success', `Bargained ride accepted at ₹${newFare}!`);
+            }
+          }}
+          onReject={handleRideClose}
+        />
+      )}
+
       {/* Map */}
       <View className="flex-1 mt-2">
         <MapView
@@ -249,25 +255,6 @@ export default function HomeScreen({ navigation }: Props) {
           </Marker>
         </MapView>
       </View>
-
-      {/* Ride Alerts Container */}
-      {showRideAlerts && (
-        <View className="absolute inset-0 bg-black/20 pointer-events-box">
-          {activeRides
-            .filter(ride => ride.requestStatus === 'pending')
-            .slice(0, MAX_VISIBLE_MODALS)
-            .map((ride, index) => (
-              <RideAlertModal
-                key={`${ride.id}-${index}`}
-                visible={true}
-                onClose={() => handleRideClose(ride.id)}
-                onAccept={() => handleRideAccept(ride.id)}
-                ride={ride}
-                index={index}
-              />
-            ))}
-        </View>
-      )}
     </View>
   );
 }
